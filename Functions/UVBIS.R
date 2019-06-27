@@ -5,8 +5,8 @@
 #' @param qDist A function with first two arguments: theta, lambda, that returns a list with two elements: grad, the gradient of log Q, and val, the value of log Q
 #' @param theta The matrix of theta samples from the previous UVB distribution. Each row must be a single draw from a multivariate distribution
 #' @param dTheta A vector of the density of each row of theta according the the previous UVB distribution
-#' @param logjoint A vector of the log of the joint density between the data and each row of theta
-#' @param maxIter Interger. Maximum number of gradient ascent iterations.
+#' @param logjoint A vector of the log of the joint density of likelihood * prior for each row of theta
+#' @param maxIter Integer. Maximum number of gradient ascent iterations.
 #' @param alpha adam optimisation control parameter.
 #' @param beta1 adam optimisation control parameter.
 #' @param beta2 adam optimisation control parameter.
