@@ -1,11 +1,12 @@
 #' Generic function for UVB-IS gradient ascent
 #'
-#' Returns the vector of optimal lambda values, the history of ELBO values, the number of iterations to converge, and the history of the effective sample size
+#' Returns the vector of optimal lambda values, the history of ELBO values, the number of iterations to converge,
+#' and the history of the effective sample size
 #' @param lambda The vector or one column matrix to be optimised
 #' @param qDist A function with first two arguments: theta, lambda, that returns a list with two elements: grad, the gradient of log Q, and val, the value of log Q
 #' @param theta The matrix of theta samples from the previous UVB distribution. Each row must be a single draw from a multivariate distribution
 #' @param dTheta A vector of the density of each row of theta according the the previous UVB distribution
-#' @param logjoint A vector of the log of the joint density of likelihood * prior for each row of theta
+#' @param logjoint A vector of the joint density: log(p(y, theta)) evaluated for each row of theta
 #' @param maxIter Integer. Maximum number of gradient ascent iterations.
 #' @param alpha adam optimisation control parameter.
 #' @param beta1 adam optimisation control parameter.
@@ -47,13 +48,13 @@ UVBIS <- function(lambda, qDist, theta, dTheta, logjoint, maxIter = 5000, alpha 
     w <- exp(lQ) / dTheta
     eval <- w * (logjoint - lQ)
     grad <- w * dLq * (logjoint - lQ)
-    f <- w * dLq
-
-    a <-  diag(cov(grad, f) / var(f))
+ 
+    a <-  diag(cov(grad, dLq) / var(dLq))
     a[is.na(a)] <- 0
 
-    gradient <- colMeans(grad - a * f)
-    gradientSq <- colMeans((grad - a * f)^2)
+    gradient <- colMeans(w * (grad - t(a * t(dLq))))
+    gradientSq <- colMeans((w * (grad - t(a * t(dLq))))^2)
+    
     LB[iter] <- mean(eval)
 
     M <- beta1 * M + (1 - beta1) * gradient
@@ -62,7 +63,7 @@ UVBIS <- function(lambda, qDist, theta, dTheta, logjoint, maxIter = 5000, alpha 
     Vstar <- V / (1 - beta2^iter)
     update <- alpha * Mstar / (sqrt(Vstar) + e)
     if(any(is.na(update))){
-      print('Break')
+      print('Break - NA gradient value')
       break
     }
     lambda <- lambda + update
