@@ -23,7 +23,7 @@ UVBIS <- function(lambda, qDist, theta, dTheta, logjoint, maxIter = 5000, alpha 
   
   diff <- threshold + 1
   iter <- 1
-  maxIter <- 2000
+
   LB <- ESS <- numeric(maxIter)
   M <- V <- numeric(dimLambda)
   e <- 1e-8
