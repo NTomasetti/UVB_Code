@@ -4,7 +4,6 @@ linearInterpolate <- function(x0, x1, y0, y1, x){
   y0 + (x - x0) * (y1 - y0) / (x1 - x0)
 }
 
-# Hybrid algorithm for the schools model
 ISschools <- function(lambda, qScore, samples, dSamples, schoolsNew, batch = 1, maxIter = 5000,
                       alpha = 0.01, beta1 = 0.9, beta2 = 0.99, threshold = 0.01){
   if(!is.matrix(lambda)){
