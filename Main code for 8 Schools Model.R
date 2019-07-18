@@ -14,7 +14,7 @@ schools_dat <- list(J = 8,
 
 # Fit MCMC
 
-fit <- stan(file = '8schools.stan', data = schools_dat, 
+fit <- stan(file = 'Functions/8schools.stan', data = schools_dat, 
             iter = 20000, chains = 1)
 
 # Extract Samples
