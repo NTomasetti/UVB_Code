@@ -4,8 +4,8 @@
 #' and the history of the effective sample size
 #' @param lambda The vector or one column matrix to be optimised
 #' @param qDist A function with first two arguments: theta, lambda, that returns a list with two elements: grad, the gradient of log Q, and val, the value of log Q
-#' @param theta The matrix of theta samples from the previous UVB distribution. Each row must be a single draw from a multivariate distribution
-#' @param dTheta A vector of the density of each row of theta according the the previous UVB distribution
+#' @param samples The matrix of theta samples from the previous UVB distribution. Each row must be a single draw from a multivariate distribution
+#' @param dSamples A vector of the density of each row of theta according the the previous UVB distribution
 #' @param logjoint A vector of the joint density: log(p(y, theta)) evaluated for each row of theta
 #' @param maxIter Integer. Maximum number of gradient ascent iterations.
 #' @param alpha adam optimisation control parameter.
@@ -16,7 +16,7 @@
 #' @param suppressProgress Boolean, if true the program will not print ELBO values to console during optimisation. Defaults to FALSE
 #' @param ... Extra arguments passed to qDist
 #' @export
-UVBIS <- function(lambda, qDist, theta, dTheta, logjoint, maxIter = 5000, alpha = 0.01, beta1 = 0.9, beta2 = 0.99, threshold = 0.01, suppressProgress = FALSE, ...){
+UVBIS <- function(lambda, qDist, samples, dSamples, logjoint, maxIter = 5000, alpha = 0.01, beta1 = 0.9, beta2 = 0.99, threshold = 0.01, suppressProgress = FALSE, ...){
   if(!is.matrix(lambda)){
     lambda <- matrix(lambda, ncol = 1)
   }
@@ -30,33 +30,39 @@ UVBIS <- function(lambda, qDist, theta, dTheta, logjoint, maxIter = 5000, alpha 
   e <- 1e-8
   meanLB <- 0
   oldMeanLB <- 0
-  S <- nrow(theta)
+  S <- nrow(samples)
   while(diff > threshold){
     if(iter > maxIter){
       break
     }
 
     eval <- numeric(S)
+    # Score of Q
     dLq <- matrix(0, S, dimLambda)
+    # Value of log Q
     lQ <- rep(0, S)
     for(s in 1:S){
-      model <- qDist(theta[s,], lambda, ...)
+      model <- qDist(samples[s,], lambda, ...)
       lQ[s] <- model$val
       dLq[s,] <- model$grad
     }
-
-    w <- exp(lQ) / dTheta
+    # Importance Sampling Weights
+    w <- exp(lQ) / dSamples
+    # Value of the ELBO
     eval <- w * (logjoint - lQ)
+    # Gradient of the ELBO
     grad <- w * dLq * (logjoint - lQ)
- 
+
+    # Control Variates 
     a <-  diag(cov(grad, dLq) / var(dLq))
     a[is.na(a)] <- 0
 
+    # Average the values of the ELBO
     gradient <- colMeans(w * (grad - t(a * t(dLq))))
     gradientSq <- colMeans((w * (grad - t(a * t(dLq))))^2)
     
     LB[iter] <- mean(eval)
-
+    # Adam update
     M <- beta1 * M + (1 - beta1) * gradient
     V <- beta2 * V + (1 - beta2) * gradientSq
     Mstar <- M / (1 - beta1^iter)
@@ -67,7 +73,7 @@ UVBIS <- function(lambda, qDist, theta, dTheta, logjoint, maxIter = 5000, alpha 
       break
     }
     lambda <- lambda + update
-
+    # The effective sample size of the importance sampler
     wNorm <- w / sum(w)
     ESS[iter] <- 1 / sum(wNorm^2)
 

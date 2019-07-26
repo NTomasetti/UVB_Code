@@ -159,24 +159,24 @@ for(K in 1:3){
       
       startIS <- Sys.time()
       
-      # Set up prior
+      # Set up parameters from prior
       ISMean <- matrix(ISfit[1:(4*K), t-1], ncol = K)
       ISSd <- matrix(exp(ISfit[4*K + 1:(4*K), t-1]), ncol = K)
       ISZ <- ISfit[2*4*K + 1:K, t-1]
       ISWeight <- exp(ISZ) / sum(exp(ISZ))
-      # Sample from prior (old approx)
+      # Sample from prior (old approximation)
       ISdraw <- matrix(0, ISsamples, 4)
-      for(i in 1:ISsamples[isrep]){
+      for(i in 1:ISsamples){
         groupIS <- sample(1:K, 1, prob = ISWeight)
         ISdraw[i, ] <- rnorm(4, ISMean[,groupIS], ISSd[,groupIS])
       }
-      # Calcualte density under the old distribution
+      # Calcualte density under the prior
       qIS <- rep(0, ISsamples)
       for(k in 1:K){
         qIS <- qIS + ISWeight[k] * mvtnorm::dmvnorm(ISdraw, ISMean[,k], diag(ISSd[,k]^2))
       }
       # Calculate the log-joint distribution through the UVB prior recursion
-      # log liklihood + log(p(k)) was calculated already for each group, subtract log(p(k)) and reconstruct with weights
+      # Note the function postK for a subset of the data will calculates this for us in this model
       loglik <- rep(0, ISsamples)
       for(j in 1:N){
         ll <- matrix(0, ISsamples, 2)
@@ -189,8 +189,8 @@ for(K in 1:3){
       loglik <- loglik - max(loglik)
       # Prior is qIS
       logjoint <- loglik + log(qIS)  
-      # Run VB Update
-      IS <- ISUVB(lambda = ISfit[,t-1, isrep],
+      # Run UVB-IS Update
+      IS <- UVBIS(lambda = ISfit[,t-1],
                   qScore = mixNormScore,
                   samples = ISdraw,
                   dSamples = qIS,

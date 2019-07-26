@@ -24,8 +24,8 @@ data <- c(100, seq(100 + initialBatch, T+100, length.out = batches))
 
 # Other setup
 lags <- 3
-MCsamples <- 2000
-ISsamples <- 100
+MCsamples <- 2000 # To estimate forecast densities as a Monte Carlo Estimate
+ISsamples <- 100 # Number of theta draws for UVB-IS
 
 dim <- 2 + lags
 priorMean <- rep(0, dim)
@@ -191,28 +191,30 @@ for(K in 1:3){
         
       #UVB-IS
       startIS <- Sys.time()
-      #Extract prior distribution, draw 100 samples
+      #Extract means, variance, mixture weights of prior distribution
       
       ISMean <- matrix(ISfit[1:(dim*K), t-1], ncol = K)
       ISSd <- matrix(exp(ISfit[dim*K + 1:(dim*K), t-1]), ncol = K)
       ISZ <- ISfit[2*dim*K + 1:K, t-1]
       ISWeight <- exp(ISZ) / sum(exp(ISZ))
-      
+      # Draw samples from the prior distribution
       ISdraw <- matrix(0, ISsamples, dim)
-      for(i in 1:ISsamples[isrep]){
+      for(i in 1:ISsamples){
         group <- sample(1:K, 1, prob = ISWeight)
         ISdraw[i, ] <- mvtnorm::rmvnorm(1, ISMean[,group], diag(ISSd[,group]^2))
       }
       
-      # Calcualte density under the old distribution
+      # Calcualte the density of these draws under the prior distributoin
       qIS <- rep(0, ISsamples)
       for(k in 1:K){
         qIS <- qIS + ISWeight[k] * mvtnorm::dmvnorm(ISdraw, ISMean[,k], diag(ISSd[,k]^2))
       }
-      # Calculate the log-joint distribution through the UVB prior recursion
+      # Calculate the log-joint density of these samples using C++ functions
       if(K == 1){
+	# The prior is a multivariate normal with parameters ISMean, Inverse Variance = diag(1/SD^2)
         pIS <- ARjointDensSingleMatrix(x[(data[t]+1 - lags):(data[t+1])], ISdraw, ISMean, diag(c(1 / ISSd^2)), lags)
       } else {
+	# Alternatively the prior is a mixture of multivariate normals, and we calculate the inverse variance for each component.
         varInv <- array(0, dim = c(2 + lags, 2 + lags, K))
         dets <- rep(0, K)
         for(k in 1:K){
@@ -222,7 +224,7 @@ for(K in 1:3){
         pIS <- ARjointDensMixMatrix(x[(data[t]+1 - lags):(data[t+1])], ISdraw, ISMean, varInv, dets, ISWeight, lags)
       }
       # Run VB Update
-      VBIS <- UVBIS(lambda = ISfit[,t-1, isrep],
+      VBIS <- UVBIS(lambda = ISfit[,t-1],
                     qScore = AR3Score,
                     samples = ISdraw,
                     dSamples = qIS,
@@ -283,9 +285,10 @@ for(K in 1:3){
       ISSd <- matrix(exp(ISfit[dim*K + 1:(dim*K), t]), ncol = K)
       ISZ <- ISfit[2*dim*K + 1:K, t]
       ISWeight <- exp(ISZ) / sum(exp(ISZ))
+      ISdraw <- matrix(0, MCsamples, dim)
       for(i in 1:MCsamples){
         group <- sample(1:K, 1, prob = ISWeight)
-        ISdraw[i, , isrep] <- mvtnorm::rmvnorm(1, ISMean[,group], diag(ISSd[,group]^2))
+        ISdraw[i, ] <- mvtnorm::rmvnorm(1, ISMean[,group], diag(ISSd[,group]^2))
       }
     }
    
@@ -315,7 +318,7 @@ for(K in 1:3){
         muIS <- ISdraw[i, 2]
         phiIS <- ISdraw[i, 3:(2 + lags)]
         meanIS <- muIS + phiIS %*% (x[(data[t+1]+1-(1:lags))] - muIS)
-        densIS[,isrep] <- densIS[,isrep] + dnorm(support, meanIS, sqrt(sigSqIS)) / MCsamples
+        densIS <- densIS + dnorm(support, meanIS, sqrt(sigSqIS)) / MCsamples
         
        
       } 
