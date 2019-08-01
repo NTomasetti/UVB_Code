@@ -312,3 +312,116 @@ DPMindivDens <- function(data, lambda, logPrior = NULL, alphaDPM = 1, S = 100, s
   }
   indivDens
 }
+
+#' Coordinate Ascent Variational Inference for the DPM model
+#' 
+#' This function implements the MFVB approximation to the DPM.
+#' @param y Matrix of data
+#' @param priorMu Base distribution prior mean
+#' @param priorSig Base distribution prior variance
+#' @param alphaDPM DPM mass parameter
+#' @param K number of DPM clusters
+#' @param iter Maximum number of coordinate ascent iterations
+CAVI <- function(y, priorMu, priorSig, alphaDPM, K, iter = 100){
+  N <- ncol(y)
+  T <- nrow(y)
+  
+  muNaught <- priorMu
+  lambdaNaught <- priorSig
+  
+  sample <- rlnorm(100000, priorMu, sqrt(priorSig))
+  sigmaMean <- mean(sample)
+  sigmaVar <- var(sample)
+  
+  alphaNaught <- sigmaMean^2 / sigmaVar + 2
+  C <- -log(sum(1/sample)) - 1/100000 * sum(log(sample)) 
+  for(i in 1:100){
+    alphaNaught <- distr::igamma(log(100000 * alphaNaught) + C)
+  }
+  kappaNaught <- 100000 * alphaNaught / sum(1/sample)
+  
+  rho <- matrix(1/K, nrow = N, ncol = K)
+  alphaHat <- rep(5, K)
+  betaHat <- rep(5, K)
+  muHat <- colMeans(y[,1:K])
+  lambdaHat <- rep(0.5, N)
+  ahat <- runif(K)
+  bhat <- runif(K)
+  
+  ySums <- matrix(0, 2, N)
+  ySums[1, ] <- colSums(y)
+  ySums[2, ] <- colSums(y^2)
+  
+  for(i in 1:iter){
+    
+    oldParams <- list(rho = rho, alphaHat = alphaHat, betaHat = betaHat, muHat = muHat, lambdaHat = lambdaHat, ahat = ahat, bhat = bhat)
+
+    # Beta
+    for(k in 1:K){
+      ahat[k] <- 1 + sum(rho[,k])
+      if(k == K){
+        bhat[k] <- alphaDPM
+      } else {
+        bhat[k] <- alphaDPM + sum(rho[,(k+1):K])
+      }
+    }
+    
+    # K
+    elogsig <- rep(0, K)
+    elogbeta <- rep(0, K)
+    cumulative <- 0
+    for(k in 1:K){
+      simsig <- 1/rgamma(1000, alphaHat[k], betaHat[k])
+      elogsig[k] <- mean(log(simsig))
+      if(k == 1){
+        elogbeta[k] <- digamma(ahat[k]) - digamma(ahat[k] + bhat[k])
+        cumulative <- cumulative + digamma(bhat[k]) - digamma(ahat[k] + bhat[k])
+      } else {
+        elogbeta[k] <- digamma(ahat[k]) - digamma(ahat[k] + bhat[k]) + cumulative
+        cumulative <- cumulative + digamma(bhat[k]) - digamma(ahat[k] + bhat[k])
+      }
+    }
+    for(j in 1:N){
+      loglik <- rep(0, K)
+      for(k in 1:K){
+        loglik[k] <- -T/2 * elogsig[k] - alphaHat[k] / (2 * betaHat[k]) * (ySums[2, j] - 2 * muHat[k] * ySums[1, j] + T * (muHat[k]^2 + lambdaHat[k]))
+      }
+      loglik <- loglik + elogbeta
+      loglik <- loglik - max(loglik)
+      rho[j,] <- exp(loglik) / sum(exp(loglik))
+    }
+    
+    # Mu Stars
+    for(k in 1:K){
+      meanNumer <- lambdaNaught * sum(rho[,k] * alphaHat[k] / betaHat[k] * ySums[1,]) + muNaught
+      meanDenom <- lambdaNaught * T * alphaHat[k] / betaHat[k] * sum(rho[,k]) + 1
+      muHat[k] <- meanNumer / meanDenom
+      lambdaHat[k] <- lambdaNaught / meanDenom
+    }
+    
+    # Sigma Stars
+    for(k in 1:K){
+      alphaHat[k] <- alphaNaught + T/2 * sum(rho[,k])
+      betaHat[k] <- kappaNaught + 1/2 * sum(rho[,k] * (ySums[2, ] + T * (muHat[k]^2 + lambdaHat[k]) - 2 * muHat[k] * ySums[1, ]))
+    }
+    
+    diffRho <- mean(rho - oldParams$rho)
+    diffAlpha <- mean(alphaHat - oldParams$alphaHat)
+    diffBeta <- mean(betaHat - oldParams$betaHat)
+    diffMu <- mean(muHat - oldParams$muHat)
+    diffLambda <- mean(lambdaHat - oldParams$lambdaHat)
+    diffA <- mean(ahat - oldParams$ahat)
+    diffB <- mean(bhat - oldParams$bhat)
+    
+    if(abs(diffMu) < 1e-5 & abs(diffLambda) < 1e-5 & abs(diffA) < 0.01 & abs(diffB) < 0.1){
+      break
+    }
+  }
+  if(i == iter){
+    print(paste('Failed to converge after', iter, 'iterations'))
+  } else {
+    print(paste('Converged at iteration', i))
+  }
+  list(rho = rho, alphaHat = alphaHat, betaHat = betaHat, muHat = muHat, lambdaHat = lambdaHat, ahat = ahat, bhat = bhat)
+}
+
