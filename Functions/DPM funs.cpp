@@ -40,7 +40,7 @@ struct QlogdensSingle {
       // It is all 2x2 so it isn't difficult to do
       T L11 = lambda(5*i + 2);
       T L21 = lambda(5*i + 3);
-      T L22 = lambda(5:i + 4);
+      T L22 = lambda(5*i + 4);
       
       // Variance matrix
       T sigma11 = L11 * L11;
